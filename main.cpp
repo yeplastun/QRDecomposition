@@ -28,21 +28,32 @@ double get_time() {
 }
 
 int main(int argc, char* argv[]) {
+    if (argc != 3) {
+        cout << "Wrong number of args." << endl;
+        return 0;
+    }
+    int n = atoi(argv[1]);
+    int nthrd = atoi(argv[2]);
+    if (n < 1 || nthrd < 1 || nthrd > n) {
+        cout << "Wrong arg values." << endl;
+        return 0;
+    }
+    cout << "Matrix size: " << n << endl;
+    cout << "Number of threads: " << nthrd << endl;
+    cout << "Creating matrices." << endl;
     Matrix A, B;
-    int n, nthrd;
-    double start, end;
-    cout << "Enter matrix size: ";
-    cin >> n;
-    cout << "Enter number of threads: ";
-    cin >> nthrd;
     A = generate(n);
     B = A;
+    string s, c;
+    double start, end;
+    printf("\e[?25l"); /* hide the cursor */
     start = get_time();
     A.inverse(nthrd);
     end = get_time();
-    A.print(6);
-    cout << endl;
     cout << "Spent time: " << end - start << endl;
-    cout << "Residual: " << residual(A,B) << endl;
+    cout << "Inversed matrix head: " << endl;
+    A.print(6);
+    cout << "Residual: " << residual(A, B);
+    printf("\e[?25h"); /* show the cursor */
     return 0;
 }
