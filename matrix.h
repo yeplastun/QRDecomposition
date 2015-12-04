@@ -1,5 +1,6 @@
 #include <fstream>
 #include <iostream>
+#include <cstdlib>
 #include <cmath>
 #include <new>
 #include <utility>
@@ -15,12 +16,15 @@ using std::ifstream;
 using std::istream;
 using std::ofstream;
 using std::ostream;
+using std::string;
+using std::to_string;
 using std::cerr;
 using std::cout;
 using std::endl;
+using std::flush;
 
-class Matrix;
-void synchronize (int total_threads);
+class Matrix ;
+void synchronize (int total_threads, pthread_cond_t* condvar) ;
 
 class ARGS {
   public:
@@ -66,6 +70,8 @@ class Matrix {
     }
     void rotate(int k, int l, Matrix& Q, double* temp, double* qtemp);
   public:
+    pthread_mutex_t mutex;
+    pthread_cond_t condvar;
     vector<int> processed;
     vector<int> flags;
     friend void QRDecomp(Matrix* self, Matrix* inv,
@@ -247,25 +253,30 @@ class Matrix {
                 diff += fabs(A[i][j] - B[i][j]);
         return diff;
     }
-    void request(int k, int l, int ncurr) {
-        static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-        static pthread_cond_t condvar = PTHREAD_COND_INITIALIZER;
+    void request(int k, int l, int ncurr, int nthrd) {
+        static int in = 0;
         pthread_mutex_lock (&mutex);
         if (processed[l] >= k) {
             pthread_cond_broadcast (&condvar);
         } else {
             while (processed[l] < k) {
-                //cout << "Thread: " << ncurr << " Processed: " << processed[l]
-                //     << " Row: " << k << endl;
+                in++;
+                if (in >= nthrd) {
+                    in = 1;
+                    pthread_cond_broadcast (&condvar);
+                }
                 pthread_cond_wait (&condvar, &mutex);
             }
         }
         pthread_mutex_unlock (&mutex);
     }
     void report(int l) {
-        static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+        //static pthread_mutex_t loc_mutex = PTHREAD_MUTEX_INITIALIZER;
         pthread_mutex_lock (&mutex);
         processed[l] += 1;
         pthread_mutex_unlock (&mutex);
+    }
+    void awake() {
+        pthread_cond_broadcast (&condvar);
     }
 };
