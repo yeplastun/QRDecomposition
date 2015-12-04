@@ -16,15 +16,20 @@ void* threadedInverse(void* args) {
     int end = ncurr == nthrd - 1 ? n : (ncurr + 1) * (n / nthrd);
     double* temp = new double[2 * n];
     double* qtemp = new double[2 * n];
+    string s, c;
+    if (ncurr == 0)
+        cout << "\tQR decomposition:" << endl;
     static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-    for (int i = 0; i < n - nthrd; ++i) {
+    for (int i = 0; i < n - 1; ++i) {
+        if (ncurr == 0 )
+            cout << '\t' << '[' + s.assign(50 * i / (n - 1), '#') + c.assign(50 - 50 * i / (n - 1), ' ') + ']' +
+                 ' ' + to_string(((1 + i) * 100) / (n - 1)) + '%' + '\r' << flush;
         pthread_mutex_lock (&mutex);
         if (self->flags[i] == 0) {
             self->flags[i] = 1;
-            //cout << "Thread: " << ncurr << " Column: " << i << endl;
             pthread_mutex_unlock (&mutex);
             for (int j = i + 1; j < n; ++j) {
-                self->request(i, j, ncurr);
+                self->request(i, j, ncurr, nthrd);
                 self->rotate(i, j, *inv, temp, qtemp);
                 self->report(j);
             }
@@ -32,22 +37,20 @@ void* threadedInverse(void* args) {
             pthread_mutex_unlock (&mutex);
         }
     }
-    synchronize(nthrd);
+    self->awake();
+    synchronize(nthrd, &self->condvar);
     if (ncurr == 0) {
-        for (int i = n - nthrd; i < n - 1; ++i) {
-            for (int j = i + 1; j < n; ++j) {
-                self->rotate(i, j, *inv, temp, qtemp);
-            }
-        }
+        cout << '\t' << '[' + s.assign(50, '#') + ']' << endl;
+        cout << "\tReverse Gauss: " << endl;
     }
     delete[] temp;
     delete[] qtemp;
-    synchronize(nthrd);
+    synchronize(nthrd, NULL);
     gauss(*self, *inv, begin, end, nthrd);
     return 0;
 }
 
-void synchronize (int total_threads) {
+void synchronize (int total_threads, pthread_cond_t* condvar = NULL) {
     static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
     static pthread_cond_t condvar_in = PTHREAD_COND_INITIALIZER;
     static pthread_cond_t condvar_out = PTHREAD_COND_INITIALIZER;
@@ -55,6 +58,8 @@ void synchronize (int total_threads) {
     static int threads_out = 0;
     pthread_mutex_lock (&mutex);
     threads_in++;
+    if (threads_in == total_threads -1 && condvar != NULL) 
+        pthread_cond_broadcast (condvar); 
     if (threads_in >= total_threads) {
         threads_out = 0;
         pthread_cond_broadcast (&condvar_in);
@@ -77,6 +82,7 @@ void synchronize (int total_threads) {
 
 void gauss(Matrix& self, Matrix& inv, int begin, int end, int nthrd) {
     int n = inv.size();
+    string s, c;
     double quot = 0.0;
     for (int j = n - 1; j >= 0; --j) {
         for (int i = min(end - 1, j - 1); i >= begin; --i) {
@@ -86,8 +92,15 @@ void gauss(Matrix& self, Matrix& inv, int begin, int end, int nthrd) {
                 self[i][k] -= quot * self[j][k];
             }
         }
-        synchronize(nthrd);
+        synchronize(nthrd, NULL);
+        if (begin == 0) {
+            cout << '\t' << '[' + s.assign(50 * (n - 1 - j) / n, '#') +
+                 c.assign(50 - 50 * (n - 1 - j) / n, ' ') + ']' + ' ' +
+                 to_string(((1 + (n - 1 - j)) * 100) / n) + '%' + '\r';
+        }
     }
+    if (begin == 0)
+        cout << '\t' << '[' + s.assign(50, '#') + ']' << endl;
     double denum;
     for (int j = begin; j < end; ++j) {
         denum = self.matrix[j * n + j];
@@ -161,6 +174,9 @@ void Matrix::inverse(int nthreads) {
     processed.assign(n, 0);
     flags.assign(n - 1, 0);
     pthread_t* threads = new pthread_t[nthreads];
+    cout << "Inversing matrix: " << endl;
+    pthread_mutex_init(&mutex, 0);
+    pthread_cond_init(&condvar, 0);
     ARGS* args = new ARGS[nthreads];
     for (int i = 0; i < nthreads; ++i) {
         args[i].set(this, &inv, i, nthreads);
